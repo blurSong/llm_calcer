@@ -48,7 +48,6 @@ class llama:
         self.head_dim = self.config["head_dim"] if "head_dim" in self.config else self.hidden_size // self.num_heads
         self.intermediate_size = self.config["intermediate_size"]
         self.vocab_size = self.config["vocab_size"]
-        self.max_position_embeddings = self.config["max_position_embeddings"]
 
     def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
@@ -60,9 +59,9 @@ class llama:
         out_proj_macs = self.hidden_size * self.num_heads * self.head_dim * tokens
 
         attention_tokens = tokens + past_tokens
-        attention_qk_macs = self.num_heads * attention_tokens * self.head_dim * attention_tokens
-        attention_softmax_macs = self.num_heads * attention_tokens * attention_tokens
-        attention_qkv_macs = self.num_heads * attention_tokens * attention_tokens * self.head_dim
+        attention_qk_macs = self.num_heads * tokens * self.head_dim * attention_tokens
+        attention_softmax_macs = self.num_heads * tokens * attention_tokens
+        attention_qkv_macs = self.num_heads * tokens * attention_tokens * self.head_dim
 
         mlp_ffn_macs = self.intermediate_size * self.hidden_size * tokens
         mlp_matdot_macs = self.intermediate_size * tokens
@@ -126,7 +125,6 @@ class llama4:
         self.intermediate_size = self.config["intermediate_size"]
         self.intermediate_size_mlp = self.config["intermediate_size_mlp"]
         self.vocab_size = self.config["vocab_size"]
-        self.max_position_embeddings = self.config["max_position_embeddings"]
         self.attn_temperature_tuning = self.config["attn_temperature_tuning"]
 
         interleave_moe_layer_step = self.config["interleave_moe_layer_step"]
@@ -147,9 +145,9 @@ class llama4:
 
         attention_tokens = tokens + past_tokens
         attn_scales_macs = self.num_heads * self.head_dim * attention_tokens
-        attention_qk_macs = self.num_heads * attention_tokens * self.head_dim * attention_tokens
-        attention_softmax_macs = self.num_heads * attention_tokens * attention_tokens
-        attention_qkv_macs = self.num_heads * attention_tokens * attention_tokens * self.head_dim
+        attention_qk_macs = self.num_heads * tokens * self.head_dim * attention_tokens
+        attention_softmax_macs = self.num_heads * tokens * attention_tokens
+        attention_qkv_macs = self.num_heads * tokens * attention_tokens * self.head_dim
 
         mlp_ffn_macs = self.intermediate_size_mlp * self.hidden_size * tokens
         mlp_matdot_macs = self.intermediate_size_mlp * tokens
@@ -227,12 +225,96 @@ class llama4:
         return total_bytes / 1e9
 
 
-class llama_nemotron:
-    pass
-
-
 class deepseek_v3:
-    pass
+    def __init__(self, hf_repo: str, custom_config: dict = None):
+        # deepseekv3 config comments
+        # https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
+        self.hf_repo = hf_repo
+        self.config = get_model_config(hf_repo)
+        if custom_config is not None:
+            self.config.update(custom_config)
+        self.num_layers = self.config["num_hidden_layers"]
+        self.first_k_dense_replace = self.config["first_k_dense_replace"]
+        self.moe_layer_freq = self.config["moe_layer_freq"]
+        self.hidden_size = self.config["hidden_size"]
+        self.num_heads = self.config["num_attention_heads"]
+        self.num_kv_heads = self.config["num_key_value_heads"] if "num_key_value_heads" in self.config else self.num_heads
+        self.v_head_dim = self.config["v_head_dim"]
+        self.kv_lora_rank = self.config["kv_lora_rank"]
+        self.q_lora_rank = self.config["q_lora_rank"] if "q_lora_rank" in self.config else None
+        self.qk_nope_head_dim = self.config["qk_nope_head_dim"]
+        self.qk_rope_head_dim = self.config["qk_rope_head_dim"]
+        self.intermediate_size = self.config["intermediate_size"]
+        self.moe_intermediate_size = self.config["moe_intermediate_size"]
+        self.n_routed_experts = self.config["n_routed_experts"]
+        self.n_shared_experts = self.config["n_shared_experts"]
+        self.num_experts_per_tok = self.config["num_experts_per_tok"]
+        self.num_nextn_predict_layers = self.config["num_nextn_predict_layers"]
+        self.vocab_size = self.config["vocab_size"]
+
+        self.num_moe_layers = (self.num_layers - self.first_k_dense_replace) / self.moe_layer_freq
+        self.num_dense_layers = self.num_layers - self.num_moe_layers
+
+    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1):
+        embedding_macs = self.vocab_size * self.hidden_size * tokens
+        lm_head_macs = self.hidden_size * self.vocab_size * tokens
+
+        # deepseekv3 attention
+        # https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
+        q_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim
+        if self.q_lora_rank:
+            q_proj_macs = (self.hidden_size * self.q_lora_rank + self.q_lora_rank * self.num_heads * q_head_dim) * tokens
+        else:
+            q_proj_macs = self.hidden_size * self.num_heads * q_head_dim * tokens
+
+        kv_a_proj_dim = self.kv_lora_rank + self.qk_rope_head_dim
+        kv_b_proj_dim = self.num_heads * (self.qk_nope_head_dim + self.v_head_dim)
+        kv_a_proj_macs = self.hidden_size * kv_a_proj_dim * tokens
+        kv_b_proj_macs = self.kv_lora_rank * kv_b_proj_dim * tokens
+
+        out_proj_macs = self.num_heads * self.v_head_dim * self.hidden_size * tokens
+
+        attention_tokens = tokens + past_tokens
+        attention_qk_macs = self.num_heads * tokens * q_head_dim * attention_tokens
+        attention_softmax_macs = self.num_heads * tokens * attention_tokens
+        attention_qkv_macs = self.num_heads * tokens * attention_tokens * self.v_head_dim
+
+        # deepseekv3 mlp and moe
+        mlp_ffn_macs = self.intermediate_size * self.hidden_size * tokens
+        mlp_matdot_macs = self.intermediate_size * tokens
+
+        moe_gate_macs = self.n_routed_experts * self.hidden_size * tokens
+        moe_r_experts_ffn_macs = self.moe_intermediate_size * self.hidden_size * self.num_experts_per_tok * tokens
+        moe_r_matdot_macs = self.moe_intermediate_size * self.num_experts_per_tok * tokens
+        moe_s_expert_ffn_macs = self.moe_intermediate_size * self.hidden_size * self.n_shared_experts * tokens
+        moe_s_expert_matdot_macs = self.moe_intermediate_size * self.n_shared_experts * tokens
+
+        layer_attention_macs = (
+            q_proj_macs
+            + kv_a_proj_macs
+            + kv_b_proj_macs
+            + out_proj_macs
+            + attention_qk_macs
+            + attention_softmax_macs
+            + attention_qkv_macs
+        )
+        layer_mlp_macs = mlp_ffn_macs * 3 + mlp_matdot_macs
+        layer_moe_macs = (
+            moe_gate_macs + moe_r_experts_ffn_macs * 3 + moe_r_matdot_macs + moe_s_expert_ffn_macs * 3 + moe_s_expert_matdot_macs
+        )
+
+        model_total_macs = (
+            layer_attention_macs * self.num_layers
+            + layer_mlp_macs * self.num_dense_layers
+            + layer_moe_macs * self.num_moe_layers
+            + embedding_macs
+            + lm_head_macs
+        )
+        model_total_macs = model_total_macs * batch
+        return model_total_macs * 2 / 1e12
+
+    def clac_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
+        pass
 
 
 def test_tops():
@@ -263,6 +345,7 @@ def test_tops():
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
     print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
     print("Decode  GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+
 
 if __name__ == "__main__":
     test_tops()

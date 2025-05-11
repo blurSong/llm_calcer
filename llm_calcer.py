@@ -385,9 +385,8 @@ def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict 
         raise NotImplementedError(f"Unsupported model: {model_type}")
 
 
-def _test():
+def test_llms():
     hf_repos = [
-        "mlx-community/Meta-Llama-3.1-405B-4bit",
         "mlx-community/Meta-Llama-3.1-405B-4bit",
         "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",
         "deepseek-ai/DeepSeek-V3-0324-4bit",
@@ -402,4 +401,4 @@ def _test():
 
 
 if __name__ == "__main__":
-    _test()
+    test_llms()

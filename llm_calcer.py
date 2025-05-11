@@ -241,7 +241,7 @@ class deepseek_v3:
         # config https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
         # model https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
         # About the MLA: deepseek has 2 MLA impls, naive and absorb.
-        # Here we we use the convenient naive impl for tops. But use the kvcache-efficient absorb impl for dram gbs.
+        # Here we use the convenient naive impl to compute tops. But use the kvcache-efficient absorb impl to compute dram gbs.
         self.config = config
         if custom_config is not None:
             self.config.update(custom_config)
@@ -270,7 +270,6 @@ class deepseek_v3:
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
-        # naive mla
         q_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim
         if self.q_lora_rank:
             q_proj_macs = (self.hidden_size * self.q_lora_rank + self.q_lora_rank * self.num_heads * q_head_dim) * tokens

@@ -349,8 +349,8 @@ def test_tops():
     print(hf_repo)
     print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+    print("Prefill GBs : {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
+    print("Decode  GBs : {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
 
     # llama405b-proxy
     hf_repo = "mlx-community/Meta-Llama-3.1-405B-4bit"
@@ -359,8 +359,8 @@ def test_tops():
     print(hf_repo + "-proxy")
     print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+    print("Prefill GBs : {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
+    print("Decode  GBs : {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
 
     # llama4-scout
     hf_repo = "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit"
@@ -368,8 +368,8 @@ def test_tops():
     print(hf_repo)
     print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+    print("Prefill GBs : {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
+    print("Decode  GBs : {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
 
     # deepseekv3
     hf_repo = "deepseek-ai/DeepSeek-V3-7B-4bit"
@@ -377,8 +377,8 @@ def test_tops():
     print(hf_repo)
     print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+    print("Prefill GBs: {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
+    print("Decode  GBs: {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
 
 
 if __name__ == "__main__":

@@ -240,7 +240,7 @@ class deepseek_v3:
     def __init__(self, config: dict, custom_config: dict = None):
         # config https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
         # model https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
-        # About the MLA: deepseek has 2 MLA impls, naive and absorb.
+        # Deepseek has 2 MLA impls, naive and absorb.
         # Here we use the convenient naive impl to compute tops. But use the kvcache-efficient absorb impl to compute dram gbs.
         self.config = config
         if custom_config is not None:

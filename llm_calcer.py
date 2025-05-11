@@ -323,7 +323,7 @@ class deepseek_v3:
         model_total_macs = model_total_macs * batch
         return model_total_macs * 2 / 1e12
 
-    def clac_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
+    def calc_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 

@@ -393,9 +393,9 @@ def test_llms():
         model = auto_model(hf_repo, "models")
         print(hf_repo)
         print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
-        print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-        print("Prefill  GBs: {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-        print("Decode   GBs: {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+        print("Decode TOPS:  {:.2f}".format(model.calc_inference_tops(1, 1024)))
+        print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
+        print("Decode GBs:   {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
 
 
 if __name__ == "__main__":

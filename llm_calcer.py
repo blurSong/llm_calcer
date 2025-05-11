@@ -241,7 +241,7 @@ class deepseek_v3:
         # config https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
         # model https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
         # About the MLA: deepseek has 2 MLA impls, naive and absorb.
-        # Here we we use the naive impl for convenient. But use the absorb impl for kvcache efficienciy.
+        # Here we we use the convenient naive impl for tops. But use the kvcache-efficient absorb impl for dram gbs.
         self.config = config
         if custom_config is not None:
             self.config.update(custom_config)

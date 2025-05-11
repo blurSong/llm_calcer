@@ -324,8 +324,8 @@ class deepseek_v3:
         return model_total_macs * 2 / 1e12
 
     def calc_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
-        embedding_macs = self.vocab_size * self.hidden_size * tokens
-        lm_head_macs = self.hidden_size * self.vocab_size * tokens
+        embedding_params = self.vocab_size * self.hidden_size
+        lm_head_params = self.hidden_size * self.vocab_size
 
         q_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim
         if self.q_lora_rank:
@@ -358,7 +358,7 @@ class deepseek_v3:
             + layer_moe_params * self.num_moe_layers
         )
         total_activations = (q_activations + kv_activations + k_pe_activations) * batch
-        head_and_tail_params = embedding_macs + lm_head_macs
+        head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
         total_bytes = total_params * wb + total_activations * ab + head_and_tail_params * 2

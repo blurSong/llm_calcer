@@ -50,10 +50,8 @@ def download_model_cache(hf_repo: str, cache_dir: str = None):
 
 
 class llama:
-    def __init__(self, config: dict = None, custom_config: dict = None):
+    def __init__(self, config: dict = None):
         self.config = config
-        if custom_config is not None:
-            self.config.update(custom_config)
         self.num_layers = self.config["num_hidden_layers"]
         self.hidden_size = self.config["hidden_size"]
         self.num_heads = self.config["num_attention_heads"]
@@ -113,20 +111,22 @@ class llama:
 
         transformer_block_params = q_proj_params + k_proj_params + v_proj_params + out_proj_params + mlp_ffn_params * 3
 
-        total_params = embedding_params + lm_head_params + transformer_block_params * self.num_layers
+        head_and_tail_params = embedding_params + lm_head_params
+        transformer_params = transformer_block_params * self.num_layers
         total_activations = (q_activations + k_activations + v_activations) * batch
 
         ab, wb = axwy_to_bytes(axwy)
-        total_bytes = total_params * wb + total_activations * ab
+        total_bytes = transformer_params * wb + total_activations * ab + head_and_tail_params * 2
         return total_bytes / 1e9
 
 
 class llama4:
-    def __init__(self, config: dict, custom_config: dict = None):
+    def __init__(self, config: dict):
         # llama4 config contains text_config and vision_config.
-        self.config = config["text_config"]
-        if custom_config is not None:
-            self.config.update(custom_config)
+        if "text_config" in config:
+            self.config = config["text_config"]
+        else:
+            self.config = config
         self.num_layers = self.config["num_hidden_layers"]
         self.hidden_size = self.config["hidden_size"]
         self.num_heads = self.config["num_attention_heads"]
@@ -224,23 +224,24 @@ class llama4:
         layer_moe_params = moe_router_params + moe_ffn_params * 3 * activated_experts
 
         total_params = (
-            embedding_params
-            + lm_head_params
-            + layer_attention_params * self.num_layers
+            +layer_attention_params * self.num_layers
             + layer_moe_params * self.moe_layers
             + layer_mlp_params * (self.num_layers - self.moe_layers)
         )
         total_activations = (q_activations + k_activations + v_activations) * batch
+        head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
-        total_bytes = total_params * wb + total_activations * ab
+        total_bytes = total_params * wb + total_activations * ab + head_and_tail_params * 2
         return total_bytes / 1e9
 
 
 class deepseek_v3:
     def __init__(self, config: dict, custom_config: dict = None):
-        # deepseekv3 config ref.
-        # https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
+        # config https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
+        # model https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
+        # About the MLA: deepseek has 2 MLA impls, naive and absorb.
+        # Here we we use the naive impl for convenient. But use the absorb impl for kvcache efficienciy.
         self.config = config
         if custom_config is not None:
             self.config.update(custom_config)
@@ -260,7 +261,6 @@ class deepseek_v3:
         self.n_routed_experts = self.config["n_routed_experts"]
         self.n_shared_experts = self.config["n_shared_experts"]
         self.num_experts_per_tok = self.config["num_experts_per_tok"]
-        self.num_nextn_predict_layers = self.config["num_nextn_predict_layers"]
         self.vocab_size = self.config["vocab_size"]
 
         self.num_moe_layers = (self.num_layers - self.first_k_dense_replace) / self.moe_layer_freq
@@ -270,8 +270,7 @@ class deepseek_v3:
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
-        # deepseekv3 attention
-        # https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
+        # naive mla
         q_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim
         if self.q_lora_rank:
             q_proj_macs = (self.hidden_size * self.q_lora_rank + self.q_lora_rank * self.num_heads * q_head_dim) * tokens
@@ -290,7 +289,7 @@ class deepseek_v3:
         attention_softmax_macs = self.num_heads * tokens * attention_tokens
         attention_qkv_macs = self.num_heads * tokens * attention_tokens * self.v_head_dim
 
-        # deepseekv3 mlp and moe
+        # mlp and moe
         mlp_ffn_macs = self.intermediate_size * self.hidden_size * tokens
         mlp_matdot_macs = self.intermediate_size * tokens
 
@@ -325,61 +324,83 @@ class deepseek_v3:
         return model_total_macs * 2 / 1e12
 
     def clac_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
-        pass
+        embedding_macs = self.vocab_size * self.hidden_size * tokens
+        lm_head_macs = self.hidden_size * self.vocab_size * tokens
+
+        q_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim
+        if self.q_lora_rank:
+            q_proj_params = self.hidden_size * self.q_lora_rank + self.q_lora_rank * self.num_heads * q_head_dim
+        else:
+            q_proj_params = self.hidden_size * self.num_heads * q_head_dim
+        kv_a_proj_params = self.hidden_size * (self.kv_lora_rank + self.qk_rope_head_dim)
+        kv_b_proj_params = self.kv_lora_rank * self.num_heads * (self.qk_nope_head_dim + self.v_head_dim)
+        out_proj_params = self.hidden_size * self.num_heads * self.v_head_dim
+
+        mlp_ffn_params = self.intermediate_size * self.hidden_size
+        moe_ffn_params = self.moe_intermediate_size * self.hidden_size
+        moe_router_params = self.hidden_size * self.n_routed_experts
+
+        # absorb mla
+        attention_tokens = tokens + past_tokens
+        q_activations = tokens * self.num_heads * q_head_dim
+        kv_activations = attention_tokens * self.kv_lora_rank
+        k_pe_activations = attention_tokens * self.qk_rope_head_dim
+
+        # Assume load all experts in the prefill stage and only activated experts in the decode stage
+        activated_experts = (self.n_routed_experts if tokens > 1 else self.num_experts_per_tok) + self.n_shared_experts
+        layer_moe_params = moe_router_params + moe_ffn_params * 3 * activated_experts
+        layer_mlp_params = mlp_ffn_params * 3
+        layer_attention_params = q_proj_params + kv_b_proj_params + kv_a_proj_params + out_proj_params
+
+        total_params = (
+            layer_attention_params * self.num_layers
+            + layer_mlp_params * self.num_dense_layers
+            + layer_moe_params * self.num_moe_layers
+        )
+        total_activations = (q_activations + kv_activations + k_pe_activations) * batch
+        head_and_tail_params = embedding_macs + lm_head_macs
+
+        ab, wb = axwy_to_bytes(axwy)
+        total_bytes = total_params * wb + total_activations * ab + head_and_tail_params * 2
+        return total_bytes / 1e9
 
 
 def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict = None):
     config = get_model_config(path_or_hf_repo, cache_dir)
     model_type = config.get("model_type", None)
 
+    # special config postprocess
+    if model_type == "llama4":
+        config = config["text_config"]
+
+    if custom_config:
+        config.update(custom_config)
+
     if model_type == "llama":
-        return llama(config, custom_config)
+        return llama(config)
     elif model_type == "llama4":
-        return llama4(config, custom_config)
+        return llama4(config)
     elif model_type == "deepseek_v3":
-        return deepseek_v3(config, custom_config)
+        return deepseek_v3(config)
     else:
         raise NotImplementedError(f"Unsupported model: {model_type}")
 
 
-def test_tops():
-    # llama405b
-    hf_repo = "mlx-community/Meta-Llama-3.1-405B-4bit"
-    model = llama(get_model_config(hf_repo, "models"))
-    print(hf_repo)
-    print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
-    print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs : {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs : {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
-
-    # llama405b-proxy
-    hf_repo = "mlx-community/Meta-Llama-3.1-405B-4bit"
-    shrink_conf = {"num_hidden_layers": 16}
-    model = llama(get_model_config(hf_repo, "models"), shrink_conf)
-    print(hf_repo + "-proxy")
-    print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
-    print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs : {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs : {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
-
-    # llama4-scout
-    hf_repo = "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit"
-    model = llama4(get_model_config(hf_repo, "models"))
-    print(hf_repo)
-    print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
-    print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs : {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs : {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
-
-    # deepseekv3
-    hf_repo = "deepseek-ai/DeepSeek-V3-7B-4bit"
-    model = deepseek_v3(get_model_config(hf_repo, "models"))
-    print(hf_repo)
-    print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
-    print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-    print("Prefill GBs: {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-    print("Decode  GBs: {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+def _test():
+    hf_repos = [
+        "mlx-community/Meta-Llama-3.1-405B-4bit",
+        "mlx-community/Meta-Llama-3.1-405B-4bit",
+        "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",
+        "deepseek-ai/DeepSeek-V3-0324-4bit",
+    ]
+    for hf_repo in hf_repos:
+        model = auto_model(hf_repo, "models")
+        print(hf_repo)
+        print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
+        print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
+        print("Prefill GBs : {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
+        print("Decode  GBs : {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
 
 
 if __name__ == "__main__":
-    test_tops()
+    _test()

@@ -237,14 +237,12 @@ class llama4:
 
 
 class deepseek_v3:
-    def __init__(self, config: dict, custom_config: dict = None):
+    def __init__(self, config: dict):
         # config https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
         # model https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
         # Deepseek has 2 MLA impls, naive and absorb.
         # Here we use the convenient naive impl to compute tops. But use the kvcache-efficient absorb impl to compute dram gbs.
         self.config = config
-        if custom_config is not None:
-            self.config.update(custom_config)
         self.num_layers = self.config["num_hidden_layers"]
         self.first_k_dense_replace = self.config["first_k_dense_replace"]
         self.moe_layer_freq = self.config["moe_layer_freq"]

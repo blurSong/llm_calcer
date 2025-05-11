@@ -13,21 +13,19 @@ def axwy_to_bytes(axwy: str):
     return float(ab) / 8, float(wb) / 8
 
 
-def get_model_config(hf_repo: str):
+def get_model_config(path_or_hf_repo: str, cache_dir: str = None):
 
-    weight_exts = ["bin", "safetensors", "pt", "pth", "ckpt", "npz"]
-
-    local_path = Path("models/" + hf_repo.split("/")[-1])
-    if not os.path.exists(local_path):
-        os.makedirs(local_path, exist_ok=True)
-        files = list_repo_files(hf_repo)
-        for f in files:
-            if not any(f.endswith(ext) for ext in weight_exts):
-                hf_hub_download(repo_id=hf_repo, filename=f, local_dir=local_path, local_dir_use_symlinks=False)
+    if os.path.exists(path_or_hf_repo):
+        local_path = os.path.join(path_or_hf_repo, "config.json")
+    else:
+        if cache_dir:
+            local_path = os.path.join(cache_dir, path_or_hf_repo.split("/")[-1])
+        else:
+            local_path = None
+        local_path = hf_hub_download(repo_id=path_or_hf_repo, filename="config.json", local_dir=local_path)
 
     try:
-        conf_path = os.path.join(local_path, "config.json")
-        with open(conf_path, "r") as f:
+        with open(local_path, "r") as f:
             config = json.load(f)
     except FileNotFoundError:
         raise
@@ -35,10 +33,25 @@ def get_model_config(hf_repo: str):
     return config
 
 
+def download_model_cache(hf_repo: str, cache_dir: str = None):
+
+    weight_exts = ["bin", "safetensors", "pt", "pth", "ckpt", "npz"]
+
+    local_path = os.path.join(cache_dir, hf_repo.split("/")[-1]) if cache_dir else None
+    if not os.path.exists(local_path):
+        os.makedirs(local_path)
+
+    files = list_repo_files(hf_repo)
+    for f in files:
+        if not any(f.endswith(ext) for ext in weight_exts):
+            hf_hub_download(repo_id=hf_repo, filename=f, local_dir=local_path)
+
+    return local_path
+
+
 class llama:
-    def __init__(self, hf_repo: str, custom_config: dict = None):
-        self.hf_repo = hf_repo
-        self.config = get_model_config(hf_repo)
+    def __init__(self, config: dict = None, custom_config: dict = None):
+        self.config = config
         if custom_config is not None:
             self.config.update(custom_config)
         self.num_layers = self.config["num_hidden_layers"]
@@ -109,10 +122,9 @@ class llama:
 
 
 class llama4:
-    def __init__(self, hf_repo: str, custom_config: dict = None):
-        """llama4 config contains text_config and vision_config."""
-        self.hf_repo = hf_repo
-        self.config = get_model_config(hf_repo)["text_config"]
+    def __init__(self, config: dict, custom_config: dict = None):
+        # llama4 config contains text_config and vision_config.
+        self.config = config["text_config"]
         if custom_config is not None:
             self.config.update(custom_config)
         self.num_layers = self.config["num_hidden_layers"]
@@ -226,11 +238,10 @@ class llama4:
 
 
 class deepseek_v3:
-    def __init__(self, hf_repo: str, custom_config: dict = None):
-        # deepseekv3 config comments
+    def __init__(self, config: dict, custom_config: dict = None):
+        # deepseekv3 config ref.
         # https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
-        self.hf_repo = hf_repo
-        self.config = get_model_config(hf_repo)
+        self.config = config
         if custom_config is not None:
             self.config.update(custom_config)
         self.num_layers = self.config["num_hidden_layers"]
@@ -317,10 +328,24 @@ class deepseek_v3:
         pass
 
 
+def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict = None):
+    config = get_model_config(path_or_hf_repo, cache_dir)
+    model_type = config.get("model_type", None)
+
+    if model_type == "llama":
+        return llama(config, custom_config)
+    elif model_type == "llama4":
+        return llama4(config, custom_config)
+    elif model_type == "deepseek_v3":
+        return deepseek_v3(config, custom_config)
+    else:
+        raise NotImplementedError(f"Unsupported model: {model_type}")
+
+
 def test_tops():
     # llama405b
     hf_repo = "mlx-community/Meta-Llama-3.1-405B-4bit"
-    model = llama(hf_repo)
+    model = llama(get_model_config(hf_repo, "models"))
     print(hf_repo)
     print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
@@ -330,7 +355,7 @@ def test_tops():
     # llama405b-proxy
     hf_repo = "mlx-community/Meta-Llama-3.1-405B-4bit"
     shrink_conf = {"num_hidden_layers": 16}
-    model = llama(hf_repo, shrink_conf)
+    model = llama(get_model_config(hf_repo, "models"), shrink_conf)
     print(hf_repo + "-proxy")
     print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
@@ -339,7 +364,16 @@ def test_tops():
 
     # llama4-scout
     hf_repo = "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit"
-    model = llama4(hf_repo)
+    model = llama4(get_model_config(hf_repo, "models"))
+    print(hf_repo)
+    print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
+    print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
+    print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
+    print("Decode  GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+
+    # deepseekv3
+    hf_repo = "deepseek-ai/DeepSeek-V3-7B-4bit"
+    model = deepseek_v3(get_model_config(hf_repo, "models"))
     print(hf_repo)
     print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
     print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))

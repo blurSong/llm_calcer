@@ -223,7 +223,7 @@ class llama4:
         activated_experts = (self.num_experts if tokens > 1 else self.num_experts_per_tok) + 1
         layer_moe_params = moe_router_params + moe_ffn_params * 3 * activated_experts
 
-        total_params = (
+        transformer_params = (
             +layer_attention_params * self.num_layers
             + layer_moe_params * self.moe_layers
             + layer_mlp_params * (self.num_layers - self.moe_layers)
@@ -232,7 +232,7 @@ class llama4:
         head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
-        total_bytes = total_params * wb + total_activations * ab + head_and_tail_params * 2
+        total_bytes = transformer_params * wb + total_activations * ab + head_and_tail_params * 2
         return total_bytes / 1e9
 
 
@@ -349,7 +349,7 @@ class deepseek_v3:
         layer_mlp_params = mlp_ffn_params * 3
         layer_attention_params = q_proj_params + kv_b_proj_params + kv_a_proj_params + out_proj_params
 
-        total_params = (
+        transformer_params = (
             layer_attention_params * self.num_layers
             + layer_mlp_params * self.num_dense_layers
             + layer_moe_params * self.num_moe_layers
@@ -358,7 +358,7 @@ class deepseek_v3:
         head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
-        total_bytes = total_params * wb + total_activations * ab + head_and_tail_params * 2
+        total_bytes = transformer_params * wb + total_activations * ab + head_and_tail_params * 2
         return total_bytes / 1e9
 
 
@@ -384,18 +384,19 @@ def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict 
 
 
 def test_llms():
+    prompt = 1024
     hf_repos = [
         "mlx-community/Meta-Llama-3.1-405B-4bit",
         "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",
-        "deepseek-ai/DeepSeek-V3-0324-4bit",
+        "deepseek-ai/DeepSeek-V3-0324",
     ]
     for hf_repo in hf_repos:
         model = auto_model(hf_repo, "models")
-        print(hf_repo)
-        print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
-        print("Decode TOPS:  {:.2f}".format(model.calc_inference_tops(1, 1024)))
-        print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0)))
-        print("Decode GBs:   {:.2f}".format(model.calc_inference_dram_gbs(1, 1024)))
+        print(f"Model: {hf_repo}, Prompt: {prompt}")
+        print("Prefill TOPS: {:.3f}".format(model.calc_inference_tops(prompt, 0)))
+        print("Prefill GBs : {:.3f}".format(model.calc_inference_dram_gbs(prompt, 0)))
+        print("Decode  TOPS: {:.3f}".format(model.calc_inference_tops(1, prompt)))
+        print("Decode  GBs : {:.3f}".format(model.calc_inference_dram_gbs(1, prompt)))
 
 
 if __name__ == "__main__":

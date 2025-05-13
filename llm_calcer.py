@@ -116,7 +116,7 @@ class llama:
         total_activations = (q_activations + k_activations + v_activations) * batch
 
         ab, wb = axwy_to_bytes(axwy)
-        total_bytes = transformer_params * wb + total_activations * ab + head_and_tail_params * 2
+        total_bytes = (transformer_params + head_and_tail_params) * wb + total_activations * ab
         return total_bytes / 1e9
 
 
@@ -232,7 +232,7 @@ class llama4:
         head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
-        total_bytes = transformer_params * wb + total_activations * ab + head_and_tail_params * 2
+        total_bytes = (transformer_params + head_and_tail_params) * wb + total_activations * ab
         return total_bytes / 1e9
 
 
@@ -358,7 +358,7 @@ class deepseek_v3:
         head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
-        total_bytes = transformer_params * wb + total_activations * ab + head_and_tail_params * 2
+        total_bytes = (transformer_params + head_and_tail_params) * wb + total_activations * ab
         return total_bytes / 1e9
 
 

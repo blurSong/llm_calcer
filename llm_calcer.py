@@ -3,6 +3,7 @@ import os
 import json
 import math
 import re
+from tabulate import tabulate
 from pathlib import Path
 from huggingface_hub import hf_hub_download, list_repo_files
 
@@ -60,7 +61,7 @@ class llama:
         self.intermediate_size = self.config["intermediate_size"]
         self.vocab_size = self.config["vocab_size"]
 
-    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
+    def calc_inference_math_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
@@ -178,7 +179,7 @@ class llama4:
         assert self.moe_layers == len(self.config["moe_layers"])
         assert self.no_rope_layers == self.config["no_rope_layers"].count(0)
 
-    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
+    def calc_inference_math_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
@@ -335,7 +336,7 @@ class deepseek_v3:
         self.num_moe_layers = (self.num_layers - self.first_k_dense_replace) / self.moe_layer_freq
         self.num_dense_layers = self.num_layers - self.num_moe_layers
 
-    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
+    def calc_inference_math_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
@@ -487,8 +488,28 @@ def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict 
         raise NotImplementedError(f"Unsupported model: {model_type}")
 
 
+def gen_reports(model, model_name: str, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4", return_break_down: bool = False):
+    header = ["Model", "Phase", "Precision", "Batch", "Tokens", "Past Tokens"]
+    phase = "prefill" if past_tokens == 0 else "decode"
+    values = [model_name, phase, axwy, batch, tokens, past_tokens]
+
+    math = model.calc_inference_math_tops(tokens, past_tokens, batch, return_break_down)
+    dram = model.calc_inference_dram_gbs(tokens, past_tokens, batch, axwy, return_break_down)
+    if return_break_down:
+        header += math.keys()
+        header += dram.keys()
+        values += math.values()
+        values += dram.values()
+    else:
+        header += ["Math TOPS", "DRAM GBs"]
+        values += [math, dram]
+
+    table = [header, values]
+    print(tabulate(table, headers="firstrow", tablefmt="rounded_grid"))
+
+
 def test_llms():
-    prompt = 1024
+    break_down = False
     hf_repos = [
         "mlx-community/Meta-Llama-3.1-405B-4bit",
         "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",
@@ -496,11 +517,8 @@ def test_llms():
     ]
     for hf_repo in hf_repos:
         model = auto_model(hf_repo, "models")
-        print(f"Model: {hf_repo}, Prompt: {prompt}")
-        print("Prefill TOPS: {:.3f}".format(model.calc_inference_tops(prompt, 0)))
-        print("Prefill GBs : {:.3f}".format(model.calc_inference_dram_gbs(prompt, 0)))
-        print("Decode  TOPS: {:.3f}".format(model.calc_inference_tops(1, prompt)))
-        print("Decode  GBs : {:.3f}".format(model.calc_inference_dram_gbs(1, prompt)))
+        gen_reports(model, hf_repo, 1024, 0, 1, "a16w4", break_down)
+        gen_reports(model, hf_repo, 1, 1024, 1, "a16w4", break_down)
 
 
 if __name__ == "__main__":

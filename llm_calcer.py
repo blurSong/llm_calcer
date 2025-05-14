@@ -51,8 +51,9 @@ def download_model_cache(hf_repo: str, cache_dir: str = None):
 
 
 class llama:
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict, name: str = None):
         self.config = config
+        self.name = name
         self.num_layers = self.config["num_hidden_layers"]
         self.hidden_size = self.config["hidden_size"]
         self.num_heads = self.config["num_attention_heads"]
@@ -154,12 +155,13 @@ class llama:
 
 
 class llama4:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, name: str = None):
         # llama4 config contains text_config and vision_config.
         if "text_config" in config:
             self.config = config["text_config"]
         else:
             self.config = config
+        self.name = name
         self.num_layers = self.config["num_hidden_layers"]
         self.hidden_size = self.config["hidden_size"]
         self.num_heads = self.config["num_attention_heads"]
@@ -309,12 +311,13 @@ class llama4:
 
 
 class deepseek_v3:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, name: str = None):
         # config https://github.com/huggingface/transformers/blob/main/src/transformers/models/deepseek_v3/configuration_deepseek_v3.py#L26
         # model https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
         # Deepseek has 2 MLA impls, naive and absorb.
         # Here we use the convenient naive impl to compute tops. But use the kvcache-efficient absorb impl to compute dram gbs.
         self.config = config
+        self.name = name
         self.num_layers = self.config["num_hidden_layers"]
         self.first_k_dense_replace = self.config["first_k_dense_replace"]
         self.moe_layer_freq = self.config["moe_layer_freq"]
@@ -478,20 +481,29 @@ def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict 
     if custom_config:
         config.update(custom_config)
 
+    name = path_or_hf_repo.split("/")[-1]
+
     if model_type == "llama":
-        return llama(config)
+        return llama(config, name)
     elif model_type == "llama4":
-        return llama4(config)
+        return llama4(config, name)
     elif model_type == "deepseek_v3":
-        return deepseek_v3(config)
+        return deepseek_v3(config, name)
     else:
         raise NotImplementedError(f"Unsupported model: {model_type}")
 
 
-def gen_reports(model, model_name: str, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4", return_break_down: bool = False):
+def gen_reports(
+    model,
+    tokens: int,
+    past_tokens: int = 0,
+    batch: int = 1,
+    axwy: str = "a16w4",
+    return_break_down: bool = False,
+):
     header = ["Model", "Phase", "Precision", "Batch", "Tokens", "Past Tokens"]
     phase = "prefill" if past_tokens == 0 else "decode"
-    values = [model_name, phase, axwy, batch, tokens, past_tokens]
+    values = [model.name, phase, axwy, batch, tokens, past_tokens]
 
     math = model.calc_inference_math_tops(tokens, past_tokens, batch, return_break_down)
     dram = model.calc_inference_dram_gbs(tokens, past_tokens, batch, axwy, return_break_down)
@@ -504,8 +516,11 @@ def gen_reports(model, model_name: str, tokens: int, past_tokens: int = 0, batch
         header += ["Math TOPS", "DRAM GBs"]
         values += [math, dram]
 
-    table = [header, values]
-    print(tabulate(table, headers="firstrow", tablefmt="rounded_grid"))
+    return [header, values]
+
+
+def print_reports(table):
+    print(tabulate(table, headers="firstrow", tablefmt="rounded_grid", stralign="left", numalign="left"))
 
 
 def test_llms():
@@ -517,8 +532,9 @@ def test_llms():
     ]
     for hf_repo in hf_repos:
         model = auto_model(hf_repo, "models")
-        gen_reports(model, hf_repo, 1024, 0, 1, "a16w4", break_down)
-        gen_reports(model, hf_repo, 1, 1024, 1, "a16w4", break_down)
+        h, v = gen_reports(model, 1024, 0, 1, "a16w4", break_down)
+        _, v2 = gen_reports(model, 1, 1024, 1, "a16w4", break_down)
+        print_reports([h, v, v2])
 
 
 if __name__ == "__main__":

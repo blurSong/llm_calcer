@@ -3,12 +3,21 @@
 ## Usage
 
 ```python
-from llm_calcer import auto_model
-model = auto_model("meta-llama/Llama-4-Scout-17B-16E-Instruct")
+from llm_calcer import auto_model, gen_reports, print_reports
 
-print("Prefill TOPS: {:.2f}".format(model.calc_inference_tops(1024, 0)))
-print("Decode  TOPS: {:.2f}".format(model.calc_inference_tops(1, 1024)))
-print("Prefill GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1024, 0, axwy="a16w4")))
-print("Decode  GBs:  {:.2f}".format(model.calc_inference_dram_gbs(1, 1024, axwy="a16w4")))
+model = auto_model("deepseek-ai/DeepSeek-V3-0324")
+reports = gen_reports(model, 1024, 0, 1, "a16w4")
 
+print_reports(reports)
+```
+
+## Results
+```bash
+╭──────────────────────────────┬─────────┬─────────────┬─────────┬──────────┬───────────────┬─────────────┬────────────╮
+│ Model                        │ Phase   │ Precision   │ Batch   │ Tokens   │ Past Tokens   │ Math TOPS   │ DRAM GBs   │
+├──────────────────────────────┼─────────┼─────────────┼─────────┼──────────┼───────────────┼─────────────┼────────────┤
+│ deepseek-ai/DeepSeek-V3-0324 │ prefill │ a16w4       │ 1       │ 1024     │ 0             │ 82.1636     │ 335.564    │
+├──────────────────────────────┼─────────┼─────────────┼─────────┼──────────┼───────────────┼─────────────┼────────────┤
+│ deepseek-ai/DeepSeek-V3-0324 │ decode  │ a16w4       │ 1       │ 1        │ 1024          │ 0.0802429   │ 18.7769    │
+╰──────────────────────────────┴─────────┴─────────────┴─────────┴──────────┴───────────────┴─────────────┴────────────╯
 ```

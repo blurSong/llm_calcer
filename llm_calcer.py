@@ -60,7 +60,7 @@ class llama:
         self.intermediate_size = self.config["intermediate_size"]
         self.vocab_size = self.config["vocab_size"]
 
-    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1):
+    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
@@ -91,9 +91,25 @@ class llama:
 
         model_total_macs = transformer_block_macs * self.num_layers + embedding_macs + lm_head_macs
         model_total_macs = model_total_macs * batch
-        return model_total_macs * 2 / 1e12
 
-    def calc_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
+        if not return_break_down:
+            return model_total_macs * 2 / 1e12
+
+        lyr = self.num_layers
+        scale = 2 * batch / 1e12
+        break_down = {}
+        break_down.update({"embedding": embedding_macs * scale})
+        break_down.update({"lm_head": lm_head_macs * scale})
+        break_down.update({"q_proj": q_proj_macs * lyr * scale})
+        break_down.update({"kv_proj": (v_proj_macs + k_proj_macs) * lyr * scale})
+        break_down.update({"out_proj": out_proj_macs * lyr * scale})
+        break_down.update({"self_attention": (attention_qk_macs + attention_softmax_macs + attention_qkv_macs) * lyr * scale})
+        break_down.update({"mlp": (mlp_ffn_macs * 3 + mlp_matdot_macs) * lyr * scale})
+        return break_down
+
+    def calc_inference_dram_gbs(
+        self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4", return_break_down: bool = False
+    ):
         embedding_params = self.vocab_size * self.hidden_size
         lm_head_params = self.hidden_size * self.vocab_size
 
@@ -117,7 +133,23 @@ class llama:
 
         ab, wb = axwy_to_bytes(axwy)
         total_bytes = (transformer_params + head_and_tail_params) * wb + total_activations * ab
-        return total_bytes / 1e9
+
+        if not return_break_down:
+            return total_bytes / 1e9
+
+        lyr = self.num_layers
+        scale_a = ab * batch / 1e9
+        scale_w = wb / 1e9
+        break_down = {}
+        break_down.update({"embedding": embedding_params * scale_w})
+        break_down.update({"lm_head": lm_head_params * scale_w})
+        break_down.update({"q_proj": q_proj_params * lyr * scale_w})
+        break_down.update({"kv_proj": (v_proj_params + k_proj_params) * lyr * scale_w})
+        break_down.update({"out_proj": out_proj_params * lyr * scale_w})
+        break_down.update({"mlp": mlp_ffn_params * 3 * lyr * scale_w})
+        break_down.update({"q_activations": q_activations * scale_a})
+        break_down.update({"kv_activations": (v_activations + k_activations) * scale_a})
+        return break_down
 
 
 class llama4:
@@ -146,7 +178,7 @@ class llama4:
         assert self.moe_layers == len(self.config["moe_layers"])
         assert self.no_rope_layers == self.config["no_rope_layers"].count(0)
 
-    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1):
+    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
@@ -196,9 +228,31 @@ class llama4:
             + lm_head_macs
         )
         model_total_macs = model_total_macs * batch
-        return model_total_macs * 2 / 1e12
 
-    def calc_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
+        if not return_break_down:
+            return model_total_macs * 2 / 1e12
+
+        lyr, ffn_lyr, moe_lyr, nope_lyr = self.num_layers, self.num_layers - self.moe_layers, self.moe_layers, self.no_rope_layers
+        scale = 2 * batch / 1e12
+        break_down = {}
+        break_down.update({"embedding": embedding_macs * scale})
+        break_down.update({"lm_head": lm_head_macs * scale})
+        break_down.update({"q_proj": q_proj_macs * lyr * scale})
+        break_down.update({"kv_proj": (v_proj_macs + k_proj_macs) * lyr * scale})
+        break_down.update({"out_proj": out_proj_macs * lyr * scale})
+        break_down.update(
+            {
+                "attention": (attention_qk_macs + attention_softmax_macs + attention_qkv_macs) * lyr * scale
+                + attn_scales_macs * nope_lyr * scale
+            }
+        )
+        break_down.update({"mlp": layer_mlp_macs * ffn_lyr * scale})
+        break_down.update({"moe": layer_moe_macs * moe_lyr * scale})
+        return break_down
+
+    def calc_inference_dram_gbs(
+        self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4", return_break_down: bool = False
+    ):
         embedding_params = self.vocab_size * self.hidden_size
         lm_head_params = self.hidden_size * self.vocab_size
 
@@ -233,7 +287,24 @@ class llama4:
 
         ab, wb = axwy_to_bytes(axwy)
         total_bytes = (transformer_params + head_and_tail_params) * wb + total_activations * ab
-        return total_bytes / 1e9
+
+        if not return_break_down:
+            return total_bytes / 1e9
+
+        lyr, ffn_lyr, moe_lyr = self.num_layers, self.num_layers - self.moe_layers, self.moe_layers
+        scale_a = ab * batch / 1e9
+        scale_w = wb / 1e9
+        break_down = {}
+        break_down.update({"embedding": embedding_params * scale_w})
+        break_down.update({"lm_head": lm_head_params * scale_w})
+        break_down.update({"q_proj": q_proj_params * lyr * scale_w})
+        break_down.update({"kv_proj": (v_proj_params + k_proj_params) * lyr * scale_w})
+        break_down.update({"out_proj": out_proj_params * lyr * scale_w})
+        break_down.update({"mlp": layer_mlp_params * ffn_lyr * scale_w})
+        break_down.update({"moe": layer_moe_params * moe_lyr * scale_w})
+        break_down.update({"q_activations": q_activations * scale_a})
+        break_down.update({"kv_activations": (v_activations + k_activations) * scale_a})
+        return break_down
 
 
 class deepseek_v3:
@@ -264,7 +335,7 @@ class deepseek_v3:
         self.num_moe_layers = (self.num_layers - self.first_k_dense_replace) / self.moe_layer_freq
         self.num_dense_layers = self.num_layers - self.num_moe_layers
 
-    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1):
+    def calc_inference_tops(self, tokens: int, past_tokens: int = 0, batch: int = 1, return_break_down: bool = False):
         embedding_macs = self.vocab_size * self.hidden_size * tokens
         lm_head_macs = self.hidden_size * self.vocab_size * tokens
 
@@ -318,9 +389,26 @@ class deepseek_v3:
             + lm_head_macs
         )
         model_total_macs = model_total_macs * batch
-        return model_total_macs * 2 / 1e12
 
-    def calc_inference_dram_gbs(self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4"):
+        if not return_break_down:
+            return model_total_macs * 2 / 1e12
+
+        lyr, den_lyr, moe_lyr = self.num_layers, self.num_dense_layers, self.num_moe_layers
+        scale = 2 * batch / 1e12
+        break_down = {}
+        break_down.update({"embedding": embedding_macs * scale})
+        break_down.update({"lm_head": lm_head_macs * scale})
+        break_down.update({"q_proj": q_proj_macs * lyr * scale})
+        break_down.update({"kv_proj": (kv_a_proj_macs + kv_b_proj_macs) * lyr * scale})
+        break_down.update({"out_proj": out_proj_macs * lyr * scale})
+        break_down.update({"attention": (attention_qk_macs + attention_softmax_macs + attention_qkv_macs) * lyr * scale})
+        break_down.update({"mlp": layer_mlp_macs * den_lyr * scale})
+        break_down.update({"moe": layer_moe_macs * moe_lyr * scale})
+        return break_down
+
+    def calc_inference_dram_gbs(
+        self, tokens: int, past_tokens: int = 0, batch: int = 1, axwy: str = "a16w4", return_break_down: bool = False
+    ):
         embedding_params = self.vocab_size * self.hidden_size
         lm_head_params = self.hidden_size * self.vocab_size
 
@@ -359,7 +447,23 @@ class deepseek_v3:
 
         ab, wb = axwy_to_bytes(axwy)
         total_bytes = (transformer_params + head_and_tail_params) * wb + total_activations * ab
-        return total_bytes / 1e9
+        if not return_break_down:
+            return total_bytes / 1e9
+
+        lyr, den_lyr, moe_lyr = self.num_layers, self.num_dense_layers, self.num_moe_layers
+        scale_a = ab * batch / 1e9
+        scale_w = wb / 1e9
+        break_down = {}
+        break_down.update({"embedding": embedding_params * scale_w})
+        break_down.update({"lm_head": lm_head_params * scale_w})
+        break_down.update({"q_proj": q_proj_params * lyr * scale_w})
+        break_down.update({"kv_proj": (kv_a_proj_params + kv_b_proj_params) * lyr * scale_w})
+        break_down.update({"out_proj": out_proj_params * lyr * scale_w})
+        break_down.update({"mlp": layer_mlp_params * den_lyr * scale_w})
+        break_down.update({"moe": layer_moe_params * moe_lyr * scale_w})
+        break_down.update({"q_activations": q_activations * scale_a})
+        break_down.update({"kv_activations (absorb)": (kv_activations + k_pe_activations) * scale_a})
+        return break_down
 
 
 def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict = None):

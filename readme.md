@@ -3,7 +3,7 @@
 ## Usage
 
 ```python
-from llm_calcer import auto_model, gen_reports, print_reports
+from llm_calcer import auto_model, gen_report, print_report
 
 model = auto_model("deepseek-ai/DeepSeek-V3-0324")
 report = gen_report(model, 1024, 0, 1, "a16w4")

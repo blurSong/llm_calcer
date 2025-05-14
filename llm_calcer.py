@@ -493,7 +493,7 @@ def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict 
         raise NotImplementedError(f"Unsupported model: {model_type}")
 
 
-def gen_reports(
+def gen_report(
     model,
     tokens: int,
     past_tokens: int = 0,
@@ -519,7 +519,7 @@ def gen_reports(
     return [header, values]
 
 
-def print_reports(table):
+def print_report(table):
     print(tabulate(table, headers="firstrow", tablefmt="rounded_grid", stralign="left", numalign="left"))
 
 
@@ -532,9 +532,9 @@ def test_llms():
     ]
     for hf_repo in hf_repos:
         model = auto_model(hf_repo, "models")
-        h, v = gen_reports(model, 1024, 0, 1, "a16w4", break_down)
-        _, v2 = gen_reports(model, 1, 1024, 1, "a16w4", break_down)
-        print_reports([h, v, v2])
+        h, v = gen_report(model, 1024, 0, 1, "a16w4", break_down)
+        _, v2 = gen_report(model, 1, 1024, 1, "a16w4", break_down)
+        print_report([h, v, v2])
 
 
 if __name__ == "__main__":

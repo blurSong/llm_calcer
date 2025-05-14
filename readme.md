@@ -6,9 +6,9 @@
 from llm_calcer import auto_model, gen_reports, print_reports
 
 model = auto_model("deepseek-ai/DeepSeek-V3-0324")
-reports = gen_reports(model, 1024, 0, 1, "a16w4")
+report = gen_report(model, 1024, 0, 1, "a16w4")
 
-print_reports(reports)
+print_report(report)
 ```
 
 ## Results

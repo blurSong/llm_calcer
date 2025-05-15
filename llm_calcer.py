@@ -152,7 +152,7 @@ class llama:
         break_down.update({"out_proj": out_proj_params * lyr * scale_w})
         break_down.update({"mlp": mlp_ffn_params * 3 * lyr * scale_w})
         break_down.update({"q_activations": q_activations * lyr * scale_a})
-        break_down.update({"kv_activations": (v_activations + k_activations) * lyr *scale_a})
+        break_down.update({"kv_activations": (v_activations + k_activations) * lyr * scale_a})
         return break_down
 
 
@@ -538,7 +538,6 @@ def calc_inference_complexity(
 
 
 def test_llms():
-    break_down = False
     hf_repos = [
         "mlx-community/Meta-Llama-3.1-405B-4bit",
         "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",
@@ -546,14 +545,7 @@ def test_llms():
     ]
     for hf_repo in hf_repos:
         model = auto_model(hf_repo, "models")
-        calc_inference_complexity(
-            model,
-            prompt=1024,
-            output=512,
-            batch=1,
-            axwy="a16w4",
-            verbose=break_down,
-        )
+        calc_inference_complexity(model, prompt=1024, output=512, batch=1, axwy="a16w4", verbose=False)
 
 
 if __name__ == "__main__":

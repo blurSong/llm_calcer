@@ -10,6 +10,7 @@ calc_inference_complexity(model, 1024, 128, 1, "a16w4", verbose=False)
 ```
 
 ## Result
+**Simple results logs**
 ```bash
 ╭──────────────────┬───────────────┬─────────────┬─────────┬──────────┬──────────┬─────────────┬────────────╮
 │ Model            │ Phase         │ Precision   │ Batch   │ Prompt   │ Output   │ Math TOPs   │ DRAM GBs   │
@@ -20,4 +21,4 @@ calc_inference_complexity(model, 1024, 128, 1, "a16w4", verbose=False)
 ╰──────────────────┴───────────────┴─────────────┴─────────┴──────────┴──────────┴─────────────┴────────────╯
 ```
 
-## [Verbose result](/results/)
+**[Verbose result](/results/)**

@@ -517,7 +517,7 @@ def calc_inference_complexity(
 
     if verbose:
         math_header, dram_header = list(pmath.keys()), list(pdram.keys())
-        header += [f"TOPs {mh}" for mh in math_header] + [f"GBs {dh}" for dh in dram_header]
+        header += [f"{mh.capitalize()} TOPs" for mh in math_header] + [f"{dh.capitalize()} GBs" for dh in dram_header]
         pvalues += list(pmath.values()) + list(pdram.values())
         dvaules += list(dmath.values()) + list(ddram.values())
     else:
@@ -537,7 +537,7 @@ def calc_inference_complexity(
 
 
 def test_llms():
-    break_down = False
+    break_down = True
     hf_repos = [
         "mlx-community/Meta-Llama-3.1-405B-4bit",
         "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",

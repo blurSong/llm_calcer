@@ -9,8 +9,9 @@ from huggingface_hub import hf_hub_download, list_repo_files
 
 
 def axwy_to_bytes(axwy: str):
-    assert axwy in ["a16w4", "a16w8", "a8w8", "a8w4", "a4w4"], f"Invalid axwy: {axwy}"
-    ab, wb = re.match(r"a(\d+)w(\d+)", axwy).groups()
+    match = re.match(r"a(\d+)w(\d+)", axwy)
+    assert match
+    ab, wb = match.groups()
     return float(ab) / 8, float(wb) / 8
 
 
@@ -493,34 +494,46 @@ def auto_model(path_or_hf_repo: str, cache_dir: str = None, custom_config: dict 
         raise NotImplementedError(f"Unsupported model: {model_type}")
 
 
-def gen_report(
+def calc_inference_complexity(
     model,
-    tokens: int,
-    past_tokens: int = 0,
+    prompt: int,
+    output: int = 0,
     batch: int = 1,
     axwy: str = "a16w4",
-    return_break_down: bool = False,
+    verbose: bool = False,
 ):
-    header = ["Model", "Phase", "Precision", "Batch", "Tokens", "Past Tokens"]
-    phase = "prefill" if past_tokens == 0 else "decode"
-    values = [model.name, phase, axwy, batch, tokens, past_tokens]
+    header = ["Model", "Phase", "Precision", "Batch", "Prompt", "Output"]
+    pvalues = [model.name, "prefill", axwy, batch, prompt, output]
+    dvaules = [model.name, "decode (once)", axwy, batch, prompt, output]
 
-    math = model.calc_inference_math_tops(tokens, past_tokens, batch, return_break_down)
-    dram = model.calc_inference_dram_gbs(tokens, past_tokens, batch, axwy, return_break_down)
-    if return_break_down:
-        header += math.keys()
-        header += dram.keys()
-        values += math.values()
-        values += dram.values()
+    # p
+    pmath = model.calc_inference_math_tops(prompt, 0, batch, verbose)
+    pdram = model.calc_inference_dram_gbs(prompt, 0, batch, axwy, verbose)
+
+    # d. use output/2 for average
+    past_token = prompt + output / 2
+    dmath = model.calc_inference_math_tops(1, past_token, batch, verbose)
+    ddram = model.calc_inference_dram_gbs(1, past_token, batch, axwy, verbose)
+
+    if verbose:
+        math_header, dram_header = list(pmath.keys()), list(pdram.keys())
+        header += [f"TOPs {mh}" for mh in math_header] + [f"GBs {dh}" for dh in dram_header]
+        pvalues += list(pmath.values()) + list(pdram.values())
+        dvaules += list(dmath.values()) + list(ddram.values())
     else:
         header += ["Math TOPs", "DRAM GBs"]
-        values += [math, dram]
+        pvalues += [pmath, pdram]
+        dvaules += [dmath, ddram]
 
-    return [header, values]
-
-
-def print_report(table):
-    print(tabulate(table, headers="firstrow", tablefmt="rounded_grid", stralign="left", numalign="left"))
+    table = [header, pvalues, dvaules]
+    if verbose:
+        name = f"results/{model.name}_in{prompt}_out{output}_batch{batch}_{axwy}.csv"
+        with open(name, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(table)
+        print(f"Report saved to {name}")
+    else:
+        print(tabulate(table, headers="firstrow", tablefmt="rounded_grid", stralign="left", numalign="left"))
 
 
 def test_llms():
@@ -532,9 +545,14 @@ def test_llms():
     ]
     for hf_repo in hf_repos:
         model = auto_model(hf_repo, "models")
-        h, v = gen_report(model, 1024, 0, 1, "a16w4", break_down)
-        _, v2 = gen_report(model, 1, 1024, 1, "a16w4", break_down)
-        print_report([h, v, v2])
+        calc_inference_complexity(
+            model,
+            prompt=1024,
+            output=512,
+            batch=1,
+            axwy="a16w4",
+            verbose=break_down,
+        )
 
 
 if __name__ == "__main__":

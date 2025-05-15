@@ -6,7 +6,7 @@
 from llm_calcer import auto_model, calc_inference_complexity
 
 model = auto_model("deepseek-ai/DeepSeek-V3-0324")
-calc_inference_complexity(model, 1024, 128, 1, "a16w4")
+calc_inference_complexity(model, 1024, 128, 1, "a16w4", verbose=False)
 ```
 
 ## Result
@@ -19,3 +19,5 @@ calc_inference_complexity(model, 1024, 128, 1, "a16w4")
 │ DeepSeek-V3-0324 │ decode (once) │ a16w4       │ 1       │ 1024     │ 512      │ 0.0815261   │ 18.7772    │
 ╰──────────────────┴───────────────┴─────────────┴─────────┴──────────┴──────────┴─────────────┴────────────╯
 ```
+
+## [Verbose result](/results/)

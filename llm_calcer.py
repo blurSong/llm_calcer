@@ -545,7 +545,7 @@ def test_llms():
     ]
     for hf_repo in hf_repos:
         model = auto_model(hf_repo, "models")
-        calc_inference_complexity(model, prompt=1024, output=512, batch=1, axwy="a16w4", verbose=False)
+        calc_inference_complexity(model, prompt=1024, output=512, batch=1, axwy="a16w4", verbose=True)
 
 
 if __name__ == "__main__":

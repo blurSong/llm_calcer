@@ -528,7 +528,7 @@ def calc_inference_complexity(
 
     table = [header, pvalues, dvaules]
     if verbose:
-        name = f"results/{model.name}_{axwy}_in{prompt}_out{output}_batch{batch}.csv"
+        name = f"results/{model.name}_{axwy}_in{prompt}_out{output}_b{batch}.csv"
         with open(name, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerows(table)

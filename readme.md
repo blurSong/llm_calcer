@@ -11,7 +11,7 @@ report = gen_report(model, 1024, 0, 1, "a16w4")
 print_report(report)
 ```
 
-## Results
+## Result
 ```bash
 ╭──────────────────────────────┬─────────┬─────────────┬─────────┬──────────┬───────────────┬─────────────┬────────────╮
 │ Model                        │ Phase   │ Precision   │ Batch   │ Tokens   │ Past Tokens   │ Math TOPS   │ DRAM GBs   │

@@ -513,7 +513,7 @@ def gen_report(
         values += math.values()
         values += dram.values()
     else:
-        header += ["Math TOPS", "DRAM GBs"]
+        header += ["Math TOPs", "DRAM GBs"]
         values += [math, dram]
 
     return [header, values]

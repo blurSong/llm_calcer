@@ -132,7 +132,8 @@ class llama:
 
         head_and_tail_params = embedding_params + lm_head_params
         transformer_params = transformer_block_params * self.num_layers
-        total_activations = (q_activations + k_activations + v_activations) * batch
+        total_activations = (q_activations + k_activations + v_activations) * batch * self.num_layers
+        # assume load q activations once a transformer block
 
         ab, wb = axwy_to_bytes(axwy)
         total_bytes = (transformer_params + head_and_tail_params) * wb + total_activations * ab
@@ -150,8 +151,8 @@ class llama:
         break_down.update({"kv_proj": (v_proj_params + k_proj_params) * lyr * scale_w})
         break_down.update({"out_proj": out_proj_params * lyr * scale_w})
         break_down.update({"mlp": mlp_ffn_params * 3 * lyr * scale_w})
-        break_down.update({"q_activations": q_activations * scale_a})
-        break_down.update({"kv_activations": (v_activations + k_activations) * scale_a})
+        break_down.update({"q_activations": q_activations * lyr * scale_a})
+        break_down.update({"kv_activations": (v_activations + k_activations) * lyr *scale_a})
         return break_down
 
 
@@ -286,7 +287,7 @@ class llama4:
             + layer_moe_params * self.moe_layers
             + layer_mlp_params * (self.num_layers - self.moe_layers)
         )
-        total_activations = (q_activations + k_activations + v_activations) * batch
+        total_activations = (q_activations + k_activations + v_activations) * batch * self.num_layers
         head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
@@ -306,8 +307,8 @@ class llama4:
         break_down.update({"out_proj": out_proj_params * lyr * scale_w})
         break_down.update({"mlp": layer_mlp_params * ffn_lyr * scale_w})
         break_down.update({"moe": layer_moe_params * moe_lyr * scale_w})
-        break_down.update({"q_activations": q_activations * scale_a})
-        break_down.update({"kv_activations": (v_activations + k_activations) * scale_a})
+        break_down.update({"q_activations": q_activations * lyr * scale_a})
+        break_down.update({"kv_activations": (v_activations + k_activations) * lyr * scale_a})
         return break_down
 
 
@@ -447,7 +448,7 @@ class deepseek_v3:
             + layer_mlp_params * self.num_dense_layers
             + layer_moe_params * self.num_moe_layers
         )
-        total_activations = (q_activations + kv_activations + k_pe_activations) * batch
+        total_activations = (q_activations + kv_activations + k_pe_activations) * batch * self.num_layers
         head_and_tail_params = embedding_params + lm_head_params
 
         ab, wb = axwy_to_bytes(axwy)
@@ -466,8 +467,8 @@ class deepseek_v3:
         break_down.update({"out_proj": out_proj_params * lyr * scale_w})
         break_down.update({"mlp": layer_mlp_params * den_lyr * scale_w})
         break_down.update({"moe": layer_moe_params * moe_lyr * scale_w})
-        break_down.update({"q_activations": q_activations * scale_a})
-        break_down.update({"kv_activations (absorb)": (kv_activations + k_pe_activations) * scale_a})
+        break_down.update({"q_activations": q_activations * lyr * scale_a})
+        break_down.update({"kv_activations (absorb)": (kv_activations + k_pe_activations) * lyr * scale_a})
         return break_down
 
 
@@ -537,7 +538,7 @@ def calc_inference_complexity(
 
 
 def test_llms():
-    break_down = True
+    break_down = False
     hf_repos = [
         "mlx-community/Meta-Llama-3.1-405B-4bit",
         "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",
